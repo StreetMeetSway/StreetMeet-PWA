@@ -1,2 +1,0 @@
-# StreetMeet-PWA
-Demo PWA
