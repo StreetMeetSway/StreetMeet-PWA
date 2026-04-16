@@ -745,7 +745,7 @@ SM.closeMobileNav = function() {
 /* ── APP INIT ── */
 SM.init = function() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   }
   SM.initAuth();
   SM.initChat();
