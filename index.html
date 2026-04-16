@@ -528,25 +528,7 @@ SM.handleSignUp = function(e) {
 };
 
 /* ── HOME COMMUNITY HEADER ── */
-const _origShowPage = SM.showPage;
-SM.showPage = function(pageId) {
-  _origShowPage(pageId);
-  if (pageId === 'home') {
-    const user = SM.getCurrentUser();
-    if (!user) return;
-    const hdr = document.getElementById('home-community-header');
-    if (hdr) {
-      const cd = SM.communityData[user.community];
-      hdr.innerHTML = `
-        <div style="font-family:var(--font-head);font-size:3.5rem;color:var(--white);letter-spacing:0.06em;line-height:1">${cd ? cd.code : user.community.toUpperCase()}</div>
-        <div style="font-family:var(--font-head);font-size:1.1rem;color:rgba(255,255,255,0.45);letter-spacing:0.15em;margin-top:4px">${cd ? cd.name.toUpperCase() : ''}</div>
-        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-sm btn-outline-white" onclick="SM.showPage('events')">VIEW ALL EVENTS</button>
-          <button class="btn btn-sm btn-outline-white" onclick="SM.showPage('chat')">COMMUNITY CHAT</button>
-          <button class="btn btn-sm btn-outline-white" onclick="SM.showPage('${user.community}')">COMMUNITY PAGE</button>
-        </div>
-      `;
-    }
+/* Home header rendered by app.js */
     const hostBtn = document.getElementById('host-create-btn');
     if (hostBtn && SM.isHost()) {
       hostBtn.innerHTML = `<button class="btn btn-sm" onclick="SM.showPage('create-event');SM.renderCreateEvent()">+ CREATE EVENT</button>`;
