@@ -119,33 +119,29 @@ SM.renderHomeCommunityHeader = function() {
 
 /* ── NAV ── */
 SM.updateNav = function(activePageId) {
-  const user = SM.getCurrentUser();
-  const navLinksEl = document.getElementById('nav-links');
-  const navUserEl = document.getElementById('nav-user');
+  var user = SM.getCurrentUser();
+  var navLinksEl = document.getElementById('nav-links');
+  var navUserEl = document.getElementById('nav-user');
   if (!navLinksEl) return;
 
   navLinksEl.innerHTML = '';
   if (navUserEl) navUserEl.innerHTML = '';
 
   if (!user) {
-    navLinksEl.innerHTML = `
-      <a class="nav-link" onclick="SM.showPage('landing')">Welcome</a>
-    `;
-    if (navUserEl) navUserEl.innerHTML = `
-      <button class="btn btn-sm btn-outline-white" onclick="SM.showPage('landing')">SIGN IN</button>
-    `;
+    navLinksEl.innerHTML = '<a class="nav-link" onclick="SM.showPage(\'landing\')">Welcome</a>';
+    if (navUserEl) navUserEl.innerHTML = '<button class="btn btn-sm btn-outline-white" onclick="SM.showPage(\'landing\')">SIGN IN</button>';
     return;
   }
 
   // Base links for all users
-  let links = `
+  var links = `
     <a class="nav-link${activePageId === 'home' ? ' active' : ''}" onclick="SM.showPage('home')">Home</a>
-    <div class="nav-dropdown">
-      <a class="nav-link">Communities ▾</a>
-      <div class="nav-dropdown-menu">
-        <a class="nav-dropdown-item" onclick="SM.showPage('smdc')">SMDC — Washington D.C.</a>
-        <a class="nav-dropdown-item" onclick="SM.showPage('smwa')">SMWA — Washington State</a>
-        <a class="nav-dropdown-item" onclick="SM.showPage('smmd')">SMMD — Maryland</a>
+    <div class="nav-dropdown" id="dd-communities">
+      <a class="nav-link" onclick="SM.toggleDropdown('dd-communities', event)">Communities ▾</a>
+      <div class="nav-dropdown-menu" id="dd-communities-menu">
+        <a class="nav-dropdown-item" onclick="SM.navGo('smdc')">SMDC — Washington D.C.</a>
+        <a class="nav-dropdown-item" onclick="SM.navGo('smwa')">SMWA — Washington State</a>
+        <a class="nav-dropdown-item" onclick="SM.navGo('smmd')">SMMD — Maryland</a>
       </div>
     </div>
     <a class="nav-link${activePageId === 'events' ? ' active' : ''}" onclick="SM.showPage('events')">Events</a>
@@ -160,19 +156,57 @@ SM.updateNav = function(activePageId) {
   navLinksEl.innerHTML = links;
 
   if (navUserEl) {
-    const initials = (user.firstName[0] + (user.lastInitial[0] || '')).toUpperCase();
+    var initials = (user.firstName[0] + (user.lastInitial[0] || '')).toUpperCase();
     navUserEl.innerHTML = `
-      <div class="nav-dropdown">
-        <div class="nav-avatar">${initials}</div>
-        <div class="nav-dropdown-menu" style="right:0;left:auto">
-          <a class="nav-dropdown-item" onclick="SM.showPage('profile')">My Profile</a>
-          <a class="nav-dropdown-item" onclick="SM.showPage('edit-profile')">Edit Profile</a>
-          <a class="nav-dropdown-item" onclick="SM.logout()" style="color:rgba(255,100,100,0.8)">Sign Out</a>
+      <div class="nav-dropdown" id="dd-user">
+        <div class="nav-avatar" onclick="SM.toggleDropdown('dd-user', event)">${initials}</div>
+        <div class="nav-dropdown-menu" id="dd-user-menu" style="right:0;left:auto;min-width:160px;">
+          <a class="nav-dropdown-item" onclick="SM.navGo('profile')">My Profile</a>
+          <a class="nav-dropdown-item" onclick="SM.navGo('edit-profile')">Edit Profile</a>
+          <a class="nav-dropdown-item" onclick="SM.logout()" style="color:rgba(255,100,100,0.9)">Sign Out</a>
         </div>
       </div>
     `;
   }
 };
+
+/* ── DROPDOWN TOGGLE ── */
+SM.toggleDropdown = function(ddId, event) {
+  if (event) event.stopPropagation();
+  var dd = document.getElementById(ddId);
+  if (!dd) return;
+  var menu = dd.querySelector('.nav-dropdown-menu');
+  if (!menu) return;
+  var isOpen = menu.style.display === 'block';
+  // Close all other open dropdowns first
+  SM.closeAllDropdowns();
+  if (!isOpen) {
+    menu.style.display = 'block';
+    dd.classList.add('open');
+  }
+};
+
+SM.closeAllDropdowns = function() {
+  document.querySelectorAll('.nav-dropdown-menu').forEach(function(menu) {
+    menu.style.display = 'none';
+  });
+  document.querySelectorAll('.nav-dropdown').forEach(function(dd) {
+    dd.classList.remove('open');
+  });
+};
+
+/* Navigate from dropdown then close all dropdowns */
+SM.navGo = function(pageId) {
+  SM.closeAllDropdowns();
+  SM.showPage(pageId);
+};
+
+/* Close dropdowns when clicking anywhere outside the nav */
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('nav')) {
+    SM.closeAllDropdowns();
+  }
+});
 
 /* ── TOAST ── */
 SM.showToast = function(msg, type = 'success') {
