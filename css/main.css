@@ -229,13 +229,17 @@ h4, .h4 {
 .nav-hamburger span { display: block; width: 22px; height: 2px; background: var(--white); }
 .nav-dropdown { position: relative; }
 .nav-dropdown-menu {
-  display: none; position: absolute; top: calc(100% + 8px); left: 0;
+  display: none; position: absolute; top: calc(100% + 4px); left: 0;
   background: var(--black); min-width: 180px;
   border: 1px solid rgba(255,255,255,0.1);
   border-top: 2px solid var(--teal);
-  z-index: 200;
+  z-index: 1100;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
-.nav-dropdown:hover .nav-dropdown-menu { display: block; }
+/* Hover kept as progressive enhancement on desktop */
+@media (hover: hover) {
+  .nav-dropdown:hover .nav-dropdown-menu { display: block; }
+}
 .nav-dropdown-item {
   display: block; font-family: var(--font-head);
   font-size: 1rem; letter-spacing: 0.04em;
