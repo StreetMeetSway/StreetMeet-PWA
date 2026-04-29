@@ -119,29 +119,33 @@ SM.renderHomeCommunityHeader = function() {
 
 /* ── NAV ── */
 SM.updateNav = function(activePageId) {
-  var user = SM.getCurrentUser();
-  var navLinksEl = document.getElementById('nav-links');
-  var navUserEl = document.getElementById('nav-user');
+  const user = SM.getCurrentUser();
+  const navLinksEl = document.getElementById('nav-links');
+  const navUserEl = document.getElementById('nav-user');
   if (!navLinksEl) return;
 
   navLinksEl.innerHTML = '';
   if (navUserEl) navUserEl.innerHTML = '';
 
   if (!user) {
-    navLinksEl.innerHTML = '<a class="nav-link" onclick="SM.showPage(\'landing\')">Welcome</a>';
-    if (navUserEl) navUserEl.innerHTML = '<button class="btn btn-sm btn-outline-white" onclick="SM.showPage(\'landing\')">SIGN IN</button>';
+    navLinksEl.innerHTML = `
+      <a class="nav-link" onclick="SM.showPage('landing')">Welcome</a>
+    `;
+    if (navUserEl) navUserEl.innerHTML = `
+      <button class="btn btn-sm btn-outline-white" onclick="SM.showPage('landing')">SIGN IN</button>
+    `;
     return;
   }
 
   // Base links for all users
-  var links = `
+  let links = `
     <a class="nav-link${activePageId === 'home' ? ' active' : ''}" onclick="SM.showPage('home')">Home</a>
-    <div class="nav-dropdown" id="dd-communities">
-      <a class="nav-link" onclick="SM.toggleDropdown('dd-communities', event)">Communities ▾</a>
-      <div class="nav-dropdown-menu" id="dd-communities-menu">
-        <a class="nav-dropdown-item" onclick="SM.navGo('smdc')">SMDC — Washington D.C.</a>
-        <a class="nav-dropdown-item" onclick="SM.navGo('smwa')">SMWA — Washington State</a>
-        <a class="nav-dropdown-item" onclick="SM.navGo('smmd')">SMMD — Maryland</a>
+    <div class="nav-dropdown">
+      <a class="nav-link">Communities ▾</a>
+      <div class="nav-dropdown-menu">
+        <a class="nav-dropdown-item" onclick="SM.showPage('smdc')">SMDC — Washington D.C.</a>
+        <a class="nav-dropdown-item" onclick="SM.showPage('smwa')">SMWA — Washington State</a>
+        <a class="nav-dropdown-item" onclick="SM.showPage('smmd')">SMMD — Maryland</a>
       </div>
     </div>
     <a class="nav-link${activePageId === 'events' ? ' active' : ''}" onclick="SM.showPage('events')">Events</a>
@@ -156,57 +160,19 @@ SM.updateNav = function(activePageId) {
   navLinksEl.innerHTML = links;
 
   if (navUserEl) {
-    var initials = (user.firstName[0] + (user.lastInitial[0] || '')).toUpperCase();
+    const initials = (user.firstName[0] + (user.lastInitial[0] || '')).toUpperCase();
     navUserEl.innerHTML = `
-      <div class="nav-dropdown" id="dd-user">
-        <div class="nav-avatar" onclick="SM.toggleDropdown('dd-user', event)">${initials}</div>
-        <div class="nav-dropdown-menu" id="dd-user-menu" style="right:0;left:auto;min-width:160px;">
-          <a class="nav-dropdown-item" onclick="SM.navGo('profile')">My Profile</a>
-          <a class="nav-dropdown-item" onclick="SM.navGo('edit-profile')">Edit Profile</a>
-          <a class="nav-dropdown-item" onclick="SM.logout()" style="color:rgba(255,100,100,0.9)">Sign Out</a>
+      <div class="nav-dropdown">
+        <div class="nav-avatar">${initials}</div>
+        <div class="nav-dropdown-menu" style="right:0;left:auto">
+          <a class="nav-dropdown-item" onclick="SM.showPage('profile')">My Profile</a>
+          <a class="nav-dropdown-item" onclick="SM.showPage('edit-profile')">Edit Profile</a>
+          <a class="nav-dropdown-item" onclick="SM.logout()" style="color:rgba(255,100,100,0.8)">Sign Out</a>
         </div>
       </div>
     `;
   }
 };
-
-/* ── DROPDOWN TOGGLE ── */
-SM.toggleDropdown = function(ddId, event) {
-  if (event) event.stopPropagation();
-  var dd = document.getElementById(ddId);
-  if (!dd) return;
-  var menu = dd.querySelector('.nav-dropdown-menu');
-  if (!menu) return;
-  var isOpen = menu.style.display === 'block';
-  // Close all other open dropdowns first
-  SM.closeAllDropdowns();
-  if (!isOpen) {
-    menu.style.display = 'block';
-    dd.classList.add('open');
-  }
-};
-
-SM.closeAllDropdowns = function() {
-  document.querySelectorAll('.nav-dropdown-menu').forEach(function(menu) {
-    menu.style.display = 'none';
-  });
-  document.querySelectorAll('.nav-dropdown').forEach(function(dd) {
-    dd.classList.remove('open');
-  });
-};
-
-/* Navigate from dropdown then close all dropdowns */
-SM.navGo = function(pageId) {
-  SM.closeAllDropdowns();
-  SM.showPage(pageId);
-};
-
-/* Close dropdowns when clicking anywhere outside the nav */
-document.addEventListener('click', function(e) {
-  if (!e.target.closest('nav')) {
-    SM.closeAllDropdowns();
-  }
-});
 
 /* ── TOAST ── */
 SM.showToast = function(msg, type = 'success') {
@@ -741,50 +707,53 @@ SM.createEvent = function() {
 
 /* ── ADMIN ── */
 SM.renderAdmin = function() {
-  const el = document.getElementById('admin-content');
+  var el = document.getElementById('admin-content');
   if (!el || !SM.isAdmin()) return;
-  const users = SM.getUsers();
-  el.innerHTML = `
-    <div class="section">
-      <h2 class="mb-lg">USER MANAGEMENT</h2>
-      <div style="overflow-x:auto">
-        <table class="admin-table">
-          <thead><tr>
-            <th style="width:150px">User</th>
-            <th style="width:70px">Role</th>
-            <th style="width:100px">Community</th>
-            <th>Actions</th>
-          </tr></thead>
-          <tbody>
-            ${users.map(u => `
-              <tr>
-                <td>
-                  <div style="font-family:var(--font-head);font-size:1rem;letter-spacing:0.03em">${u.firstName} ${u.lastInitial}</div>
-                  <div style="font-size:var(--p3);color:var(--gray-600)">${u.email}</div>
-                </td>
-                <td><span class="tag ${u.role==='admin'?'tag-black':u.role==='host'?'tag-teal':'tag-outline'}">${u.role.toUpperCase()}</span></td>
-                <td style="font-size:var(--p3)">${u.community?.toUpperCase() || '—'}</td>
-                <td><div class="action-btns">
-                  ${u.role === 'user' ? `<button class="action-btn promote" onclick="SM.promoteToHost('${u.id}');SM.renderAdmin()">MAKE HOST</button>` : ''}
-                  ${u.role !== 'admin' ? `<button class="action-btn restrict" onclick="SM.restrictUser('${u.id}');SM.renderAdmin()">RESTRICT</button>` : ''}
-                  ${u.role !== 'admin' ? `<button class="action-btn remove" onclick="if(confirm('Remove this user?')){SM.deleteUser('${u.id}');SM.renderAdmin()}">REMOVE</button>` : ''}
-                </div></td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-      <div style="margin-top:40px">
-        <h2 class="mb-lg">CREATE COMMUNITY</h2>
-        <div style="max-width:480px;display:flex;flex-direction:column;gap:14px">
-          <div class="field"><label class="field-label">COMMUNITY CODE</label><input class="field-input" type="text" id="cc-code" placeholder="e.g. SMNYC" maxlength="6"/></div>
-          <div class="field"><label class="field-label">CITY / REGION</label><input class="field-input" type="text" id="cc-city" placeholder="New York City"/></div>
-          <div class="field"><label class="field-label">ASSIGN HOST (USERNAME)</label><input class="field-input" type="text" id="cc-host" placeholder="Search username..."/></div>
-          <button class="btn btn-sm" onclick="SM.showToast('Community created! Add a new community page HTML file for it.','success')">CREATE COMMUNITY</button>
-        </div>
-      </div>
-    </div>
-  `;
+
+  /* Show loading state while Firestore fetches users */
+  el.innerHTML = '<div class="section"><p class="p2" style="color:var(--gray-600)">Loading users...</p></div>';
+
+  SM.getUsers().then(function(users) {
+    el.innerHTML =
+      '<div class="section">' +
+      '<h2 class="mb-lg">USER MANAGEMENT</h2>' +
+      '<div style="overflow-x:auto">' +
+      '<table class="admin-table"><thead><tr>' +
+      '<th style="width:150px">User</th>' +
+      '<th style="width:70px">Role</th>' +
+      '<th style="width:100px">Community</th>' +
+      '<th>Actions</th>' +
+      '</tr></thead><tbody>' +
+      users.map(function(u) {
+        return '<tr>' +
+          '<td>' +
+            '<div style="font-family:var(--font-head);font-size:1rem;letter-spacing:0.03em">' + (u.firstName||'') + ' ' + (u.lastInitial||'') + '</div>' +
+            '<div style="font-size:var(--p3);color:var(--gray-600)">' + (u.email||'') + '</div>' +
+          '</td>' +
+          '<td><span class="tag ' + (u.role==='admin'?'tag-black':u.role==='host'?'tag-teal':'tag-outline') + '">' + (u.role||'user').toUpperCase() + '</span></td>' +
+          '<td style="font-size:var(--p3)">' + ((u.community||'').toUpperCase() || '—') + '</td>' +
+          '<td><div class="action-btns">' +
+            (u.role === 'user' ? '<button class="action-btn promote" onclick="SM.promoteToHost(\'' + u.id + '\');SM.renderAdmin()">MAKE HOST</button>' : '') +
+            (u.role !== 'admin' ? '<button class="action-btn restrict" onclick="SM.restrictUser(\'' + u.id + '\');SM.renderAdmin()">RESTRICT</button>' : '') +
+            (u.role !== 'admin' ? '<button class="action-btn remove" onclick="if(confirm(\'Remove this user?\')){SM.deleteUser(\'' + u.id + '\');SM.renderAdmin()}">REMOVE</button>' : '') +
+          '</div></td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>' +
+      '<div style="margin-top:40px">' +
+        '<h2 class="mb-lg">CREATE COMMUNITY</h2>' +
+        '<div style="max-width:480px;display:flex;flex-direction:column;gap:14px">' +
+          '<div class="field"><label class="field-label">COMMUNITY CODE</label><input class="field-input" type="text" id="cc-code" placeholder="e.g. SMNYC" maxlength="6"/></div>' +
+          '<div class="field"><label class="field-label">CITY / REGION</label><input class="field-input" type="text" id="cc-city" placeholder="New York City"/></div>' +
+          '<div class="field"><label class="field-label">ASSIGN HOST (USERNAME)</label><input class="field-input" type="text" id="cc-host" placeholder="Search username..."/></div>' +
+          '<button class="btn btn-sm" onclick="SM.showToast(\'Community creation coming in Phase 4!\',\'success\')">CREATE COMMUNITY</button>' +
+        '</div>' +
+      '</div>' +
+      '</div>';
+  }).catch(function(err) {
+    el.innerHTML = '<div class="section"><p class="p2" style="color:var(--red)">Could not load users. Check your connection and try again.</p></div>';
+    console.error('SM: renderAdmin error:', err);
+  });
 };
 
 /* ── CONTACT FORM ── */
@@ -810,7 +779,8 @@ SM.init = function() {
     var swPath = window.location.pathname.replace(/\/[^\/]*$/, '/') + 'sw.js';
     navigator.serviceWorker.register(swPath).catch(function() {});
   }
-  SM.initAuth();
+
+  SM.initAuth(); /* Confirms Firebase Auth is ready — no localStorage seeding */
   SM.initChat();
 
   /* Force all pages hidden first */
@@ -818,25 +788,11 @@ SM.init = function() {
     p.classList.remove('active');
   });
 
+  /* Firebase onAuthStateChanged (firebase-config.js) handles session sync.
+     We check localStorage which it keeps in sync — if a session exists, go home. */
   var user = SM.getCurrentUser();
   var startPage = user ? 'home' : 'landing';
   SM.showPage(startPage);
 };
 
 document.addEventListener('DOMContentLoaded', SM.init);
-
-/* ── SCROLL REVEAL — IntersectionObserver ── */
-function initReveal() {
-  var reveals = document.querySelectorAll('.reveal');
-  if (!reveals.length) return;
-  var observer = new IntersectionObserver(function(entries) {
-    entries.forEach(function(entry, i) {
-      if (entry.isIntersecting) {
-        setTimeout(function() { entry.target.classList.add('visible'); }, i * 60);
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.1 });
-  reveals.forEach(function(el) { observer.observe(el); });
-}
-document.addEventListener('DOMContentLoaded', initReveal);

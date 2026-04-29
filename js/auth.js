@@ -1,131 +1,286 @@
 /* ============================================================
-   STREETMEET — AUTH & USER STATE
-   Handles login state, role checks, profile data
-   In production: replace localStorage with your backend API
+   STREETMEET — AUTH & USER STATE  (Task 1.3)
+   Firebase Auth + Firestore — replaces localStorage login
    ============================================================ */
 
 window.SM = window.SM || {};
 var SM = window.SM;
 
-/* ── DEFAULT MOCK USER DATA ── */
-SM.defaultUsers = [
-  {
-    id: 'user_001', email: 'admin@streetmeet.com', password: 'admin123',
-    role: 'admin', firstName: 'Admin', lastInitial: 'S',
-    bio: 'StreetMeet administrator.', community: 'smdc',
-    creatorType: 'Photographer', instagram: 'streetmeet',
-    website: 'streetmeet.com', photos: [], profilePhoto: null
-  },
-  {
-    id: 'user_002', email: 'kevin@streetmeet.com', password: 'host123',
-    role: 'host', firstName: 'Kevin', lastInitial: 'W',
-    bio: 'D.C.-born photographer and visual storyteller. 15+ years behind the camera.',
-    community: 'smdc', creatorType: 'Photographer',
-    instagram: 'k3vin.wayne', website: 'dreamcityphotodept.com',
-    photos: [], profilePhoto: null
-  },
-  {
-    id: 'user_003', email: 'user@streetmeet.com', password: 'user123',
-    role: 'user', firstName: 'Jordan', lastInitial: 'M',
-    bio: 'Street photographer chasing light across all five boroughs. Film + digital.',
-    community: 'smdc', creatorType: 'Photographer',
-    instagram: 'jordanm', website: '', photos: [], profilePhoto: null
-  }
-];
+/* ══════════════════════════════════════════════════════════
+   GETTERS
+   All other JS files call these — signatures unchanged
+══════════════════════════════════════════════════════════ */
 
-/* ── INIT ── */
-SM.initAuth = function() {
-  if (!localStorage.getItem('sm_users')) {
-    localStorage.setItem('sm_users', JSON.stringify(SM.defaultUsers));
-  }
+SM.getCurrentUser = function() {
+  var stored = localStorage.getItem('sm_current_user');
+  return stored ? JSON.parse(stored) : null;
 };
 
-/* ── GETTERS ── */
-SM.getUsers = () => JSON.parse(localStorage.getItem('sm_users') || '[]');
-SM.getCurrentUser = () => JSON.parse(localStorage.getItem('sm_current_user') || 'null');
-SM.isLoggedIn = () => !!SM.getCurrentUser();
-SM.isAdmin = () => { const u = SM.getCurrentUser(); return u && u.role === 'admin'; };
-SM.isHost = () => { const u = SM.getCurrentUser(); return u && (u.role === 'host' || u.role === 'admin'); };
+SM.isLoggedIn = function() { return !!SM.getCurrentUser(); };
 
-/* ── REGISTER ── */
+SM.isAdmin = function() {
+  var u = SM.getCurrentUser();
+  return u && u.role === 'admin';
+};
+
+SM.isHost = function() {
+  var u = SM.getCurrentUser();
+  return u && (u.role === 'host' || u.role === 'admin');
+};
+
+/* ══════════════════════════════════════════════════════════
+   REGISTER — Email / Password
+   Creates Firebase Auth account + Firestore profile doc
+══════════════════════════════════════════════════════════ */
+
 SM.register = function(data) {
-  const users = SM.getUsers();
-  if (users.find(u => u.email === data.email)) {
-    return { ok: false, error: 'An account with this email already exists.' };
-  }
-  const user = {
-    id: 'user_' + Date.now(),
-    email: data.email,
-    password: data.password,
-    role: 'user',
-    firstName: data.firstName,
-    lastInitial: data.lastInitial,
-    bio: data.bio || '',
-    community: data.community || 'smdc',
-    creatorType: data.creatorType || 'Photographer',
-    instagram: data.instagram || '',
-    website: data.website || '',
-    photos: [],
-    profilePhoto: null
-  };
-  users.push(user);
-  localStorage.setItem('sm_users', JSON.stringify(users));
-  localStorage.setItem('sm_current_user', JSON.stringify(user));
-  return { ok: true, user };
+  return auth.createUserWithEmailAndPassword(data.email, data.password)
+    .then(function(credential) {
+      var uid  = credential.user.uid;
+      var profile = {
+        id:           uid,
+        email:        data.email,
+        role:         'user',
+        firstName:    data.firstName    || '',
+        lastInitial:  data.lastInitial  || '',
+        bio:          data.bio          || '',
+        community:    data.community    || 'smdc',
+        creatorType:  data.creatorType  || 'Photographer',
+        instagram:    data.instagram    || '',
+        website:      data.website      || '',
+        videoUrl:     '',
+        avatarURL:    '',
+        photoURLs:    [],
+        createdAt:    firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      /* Write profile to Firestore users/{uid} */
+      return db.collection('users').doc(uid).set(profile)
+        .then(function() {
+          localStorage.setItem('sm_current_user', JSON.stringify(profile));
+          return { ok: true, user: profile };
+        });
+    })
+    .catch(function(err) {
+      return { ok: false, error: SM._authError(err.code) };
+    });
 };
 
-/* ── LOGIN ── */
+/* ══════════════════════════════════════════════════════════
+   LOGIN — Email / Password
+══════════════════════════════════════════════════════════ */
+
 SM.login = function(email, password) {
-  const users = SM.getUsers();
-  const user = users.find(u => u.email === email && u.password === password);
-  if (!user) return { ok: false, error: 'Incorrect email or password.' };
-  localStorage.setItem('sm_current_user', JSON.stringify(user));
-  return { ok: true, user };
+  return auth.signInWithEmailAndPassword(email, password)
+    .then(function(credential) {
+      /* firebase-config.js onAuthStateChanged will sync the profile —
+         return ok immediately so the UI can respond */
+      return { ok: true };
+    })
+    .catch(function(err) {
+      return { ok: false, error: SM._authError(err.code) };
+    });
 };
 
-/* ── LOGOUT ── */
+/* ══════════════════════════════════════════════════════════
+   GOOGLE SIGN-IN
+   One-tap sign in / register with Google account
+══════════════════════════════════════════════════════════ */
+
+SM.loginWithGoogle = function() {
+  var provider = new firebase.auth.GoogleAuthProvider();
+  return auth.signInWithPopup(provider)
+    .then(function(result) {
+      var uid  = result.user.uid;
+      var gUser = result.user;
+
+      /* Check if this Google user already has a Firestore profile */
+      return db.collection('users').doc(uid).get()
+        .then(function(doc) {
+          if (!doc.exists) {
+            /* First time Google sign-in — create profile doc */
+            var nameParts = (gUser.displayName || '').split(' ');
+            var profile = {
+              id:           uid,
+              email:        gUser.email,
+              role:         'user',
+              firstName:    nameParts[0] || '',
+              lastInitial:  nameParts.length > 1 ? nameParts[nameParts.length - 1][0] + '.' : '',
+              bio:          '',
+              community:    'smdc',
+              creatorType:  'Photographer',
+              instagram:    '',
+              website:      '',
+              videoUrl:     '',
+              avatarURL:    gUser.photoURL || '',
+              photoURLs:    [],
+              createdAt:    firebase.firestore.FieldValue.serverTimestamp()
+            };
+            return db.collection('users').doc(uid).set(profile)
+              .then(function() {
+                localStorage.setItem('sm_current_user', JSON.stringify(profile));
+                return { ok: true, user: profile, isNew: true };
+              });
+          } else {
+            /* Returning Google user — sync profile from Firestore */
+            var profile = doc.data();
+            profile.id = uid;
+            localStorage.setItem('sm_current_user', JSON.stringify(profile));
+            return { ok: true, user: profile, isNew: false };
+          }
+        });
+    })
+    .catch(function(err) {
+      if (err.code === 'auth/popup-closed-by-user') {
+        return { ok: false, error: null }; /* User closed popup — not an error */
+      }
+      return { ok: false, error: SM._authError(err.code) };
+    });
+};
+
+/* ══════════════════════════════════════════════════════════
+   LOGOUT
+══════════════════════════════════════════════════════════ */
+
 SM.logout = function() {
-  localStorage.removeItem('sm_current_user');
-  SM.showPage('landing');
-  SM.updateNav();
+  auth.signOut().then(function() {
+    localStorage.removeItem('sm_current_user');
+    SM.closeAllDropdowns();
+    SM.showPage('landing');
+    SM.updateNav();
+  });
 };
 
-/* ── UPDATE PROFILE ── */
+/* ══════════════════════════════════════════════════════════
+   PASSWORD RESET
+   Firebase sends the reset email automatically
+══════════════════════════════════════════════════════════ */
+
+SM.sendPasswordReset = function(email) {
+  return auth.sendPasswordResetEmail(email)
+    .then(function() {
+      return { ok: true };
+    })
+    .catch(function(err) {
+      return { ok: false, error: SM._authError(err.code) };
+    });
+};
+
+/* ══════════════════════════════════════════════════════════
+   UPDATE PROFILE
+   Writes changes to Firestore + updates local session cache
+══════════════════════════════════════════════════════════ */
+
 SM.updateProfile = function(updates) {
-  const current = SM.getCurrentUser();
-  if (!current) return { ok: false, error: 'Not logged in.' };
-  const users = SM.getUsers();
-  const idx = users.findIndex(u => u.id === current.id);
-  if (idx === -1) return { ok: false, error: 'User not found.' };
-  const updated = { ...users[idx], ...updates };
-  users[idx] = updated;
-  localStorage.setItem('sm_users', JSON.stringify(users));
-  localStorage.setItem('sm_current_user', JSON.stringify(updated));
-  return { ok: true, user: updated };
+  var current = SM.getCurrentUser();
+  if (!current) return Promise.resolve({ ok: false, error: 'Not logged in.' });
+
+  return db.collection('users').doc(current.id).update(updates)
+    .then(function() {
+      var updated = Object.assign({}, current, updates);
+      localStorage.setItem('sm_current_user', JSON.stringify(updated));
+      return { ok: true, user: updated };
+    })
+    .catch(function(err) {
+      console.error('SM: updateProfile error:', err);
+      return { ok: false, error: 'Could not save profile. Please try again.' };
+    });
 };
 
-/* ── ADMIN: MANAGE USERS ── */
+/* ══════════════════════════════════════════════════════════
+   FETCH ANY USER PROFILE  (for profile-linked usernames)
+   Returns Firestore doc data for any userId
+══════════════════════════════════════════════════════════ */
+
+SM.fetchUserProfile = function(userId) {
+  return db.collection('users').doc(userId).get()
+    .then(function(doc) {
+      if (doc.exists) {
+        var data = doc.data();
+        data.id = doc.id;
+        return { ok: true, user: data };
+      }
+      return { ok: false, error: 'User not found.' };
+    })
+    .catch(function(err) {
+      return { ok: false, error: err.message };
+    });
+};
+
+/* ══════════════════════════════════════════════════════════
+   ADMIN — USER MANAGEMENT
+   All writes go to Firestore; role is stored on user doc
+══════════════════════════════════════════════════════════ */
+
 SM.promoteToHost = function(userId) {
-  const users = SM.getUsers();
-  const idx = users.findIndex(u => u.id === userId);
-  if (idx === -1) return;
-  users[idx].role = 'host';
-  localStorage.setItem('sm_users', JSON.stringify(users));
-  SM.showToast('User promoted to Host', 'success');
+  db.collection('users').doc(userId).update({ role: 'host' })
+    .then(function() { SM.showToast('User promoted to Host', 'success'); })
+    .catch(function() { SM.showToast('Could not update user', 'error'); });
 };
 
 SM.restrictUser = function(userId) {
-  const users = SM.getUsers();
-  const idx = users.findIndex(u => u.id === userId);
-  if (idx === -1) return;
-  users[idx].restricted = !users[idx].restricted;
-  localStorage.setItem('sm_users', JSON.stringify(users));
-  SM.showToast(users[idx].restricted ? 'User restricted' : 'User unrestricted', 'success');
+  /* Toggle restricted flag */
+  db.collection('users').doc(userId).get()
+    .then(function(doc) {
+      if (!doc.exists) return;
+      var isRestricted = !doc.data().restricted;
+      return doc.ref.update({ restricted: isRestricted })
+        .then(function() {
+          SM.showToast(isRestricted ? 'User restricted' : 'User unrestricted', 'success');
+        });
+    })
+    .catch(function() { SM.showToast('Could not update user', 'error'); });
 };
 
 SM.deleteUser = function(userId) {
-  let users = SM.getUsers();
-  users = users.filter(u => u.id !== userId);
-  localStorage.setItem('sm_users', JSON.stringify(users));
-  SM.showToast('User removed', 'success');
+  /* Removes Firestore profile — Auth account cleanup done server-side via Cloud Functions in Phase 3 */
+  db.collection('users').doc(userId).delete()
+    .then(function() { SM.showToast('User removed', 'success'); })
+    .catch(function() { SM.showToast('Could not remove user', 'error'); });
+};
+
+SM.getUsers = function() {
+  /* Admin panel — returns promise of all users from Firestore */
+  return db.collection('users').get()
+    .then(function(snapshot) {
+      return snapshot.docs.map(function(doc) {
+        var d = doc.data();
+        d.id = doc.id;
+        return d;
+      });
+    });
+};
+
+/* ══════════════════════════════════════════════════════════
+   INIT AUTH
+   Called by SM.init() — Firebase auth state is handled by
+   the onAuthStateChanged observer in firebase-config.js
+   This function now just confirms Firebase is ready
+══════════════════════════════════════════════════════════ */
+
+SM.initAuth = function() {
+  /* Nothing to seed — Firebase Auth + Firestore are the source of truth.
+     The onAuthStateChanged observer in firebase-config.js handles
+     session sync automatically on every page load. */
+  console.log('SM: Auth ready — using Firebase Auth');
+};
+
+/* ══════════════════════════════════════════════════════════
+   HELPER — Friendly error messages for Firebase Auth codes
+══════════════════════════════════════════════════════════ */
+
+SM._authError = function(code) {
+  var messages = {
+    'auth/email-already-in-use':    'An account with this email already exists.',
+    'auth/invalid-email':           'Please enter a valid email address.',
+    'auth/weak-password':           'Password must be at least 6 characters.',
+    'auth/user-not-found':          'Incorrect email or password.',
+    'auth/wrong-password':          'Incorrect email or password.',
+    'auth/invalid-credential':      'Incorrect email or password.',
+    'auth/too-many-requests':       'Too many attempts. Please wait a moment and try again.',
+    'auth/network-request-failed':  'Connection error. Please check your internet and try again.',
+    'auth/popup-blocked':           'Popup was blocked. Please allow popups for this site and try again.',
+    'auth/user-disabled':           'This account has been disabled. Please contact StreetMeet support.'
+  };
+  return messages[code] || 'Something went wrong. Please try again.';
 };
