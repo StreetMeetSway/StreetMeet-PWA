@@ -157,9 +157,21 @@
             </div>
             <div id="signin-error" style="font-size:var(--p3);color:var(--red);display:none"></div>
             <button class="btn btn-wide" type="submit">SIGN IN</button>
-            <p class="p3 text-center" style="color:var(--gray-600)">
-              Demo: admin@streetmeet.com / admin123 &nbsp;·&nbsp; user@streetmeet.com / user123
+            <!-- Forgot password -->
+            <p class="p3 text-center" style="margin-top:4px;">
+              <button type="button" onclick="SM.handleForgotPassword()" style="background:none;border:none;font-family:var(--font-body);font-size:var(--p3);color:var(--teal-dark);cursor:pointer;text-decoration:underline;padding:0;">Forgot password?</button>
             </p>
+            <!-- Divider -->
+            <div style="display:flex;align-items:center;gap:12px;margin:4px 0;">
+              <div style="flex:1;height:1px;background:var(--gray-200)"></div>
+              <span style="font-family:var(--font-head);font-size:0.85rem;letter-spacing:0.1em;color:var(--gray-400)">OR</span>
+              <div style="flex:1;height:1px;background:var(--gray-200)"></div>
+            </div>
+            <!-- Google Sign-In -->
+            <button type="button" onclick="SM.handleGoogleSignIn()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:11px 20px;border:2px solid var(--gray-200);background:var(--white);cursor:pointer;font-family:var(--font-head);font-size:1.1rem;letter-spacing:0.05em;color:var(--black);transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--black)'" onmouseout="this.style.borderColor='var(--gray-200)'">
+              <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+              CONTINUE WITH GOOGLE
+            </button>
           </div>
         </form>
       </div>
@@ -497,44 +509,108 @@ SM.switchAuthTab = function(tab) {
   }
 };
 
-/* ── SIGN IN HANDLER ── */
+/* ── SIGN IN HANDLER (Firebase async) ── */
 SM.handleSignIn = function(e) {
   e.preventDefault();
-  const email = document.getElementById('signin-email').value.trim();
-  const pw = document.getElementById('signin-pw').value;
-  const errEl = document.getElementById('signin-error');
-  const result = SM.login(email, pw);
-  if (!result.ok) {
-    errEl.textContent = result.error;
+  var email  = document.getElementById('signin-email').value.trim();
+  var pw     = document.getElementById('signin-pw').value;
+  var errEl  = document.getElementById('signin-error');
+  var btn    = e.target.querySelector('button[type=submit]');
+  if (btn) { btn.textContent = 'SIGNING IN...'; btn.disabled = true; }
+
+  SM.login(email, pw).then(function(result) {
+    if (btn) { btn.textContent = 'SIGN IN'; btn.disabled = false; }
+    if (!result.ok) {
+      errEl.textContent = result.error;
+      errEl.style.display = 'block';
+      return;
+    }
+    errEl.style.display = 'none';
+    /* onAuthStateChanged in firebase-config.js syncs the profile;
+       wait briefly then navigate so the profile is ready */
+    setTimeout(function() {
+      var user = SM.getCurrentUser();
+      SM.showToast('Welcome back' + (user && user.firstName ? ', ' + user.firstName + '!' : '!'), 'success');
+      SM.showPage('home');
+    }, 600);
+  });
+};
+
+/* ── GOOGLE SIGN-IN HANDLER ── */
+SM.handleGoogleSignIn = function() {
+  var errEl = document.getElementById('signin-error');
+  SM.loginWithGoogle().then(function(result) {
+    if (!result.ok) {
+      if (result.error) { errEl.textContent = result.error; errEl.style.display = 'block'; }
+      return;
+    }
+    errEl.style.display = 'none';
+    var user = result.user;
+    if (result.isNew) {
+      SM.showToast('Welcome to StreetMeet, ' + user.firstName + '!', 'success');
+      SM.showPage('edit-profile'); /* New Google user — complete their profile */
+    } else {
+      SM.showToast('Welcome back, ' + user.firstName + '!', 'success');
+      SM.showPage('home');
+    }
+  });
+};
+
+/* ── FORGOT PASSWORD HANDLER ── */
+SM.handleForgotPassword = function() {
+  var email = document.getElementById('signin-email').value.trim();
+  if (!email) {
+    SM.showToast('Enter your email address above first', 'error');
+    document.getElementById('signin-email').focus();
+    return;
+  }
+  SM.sendPasswordReset(email).then(function(result) {
+    if (result.ok) {
+      SM.showToast('Password reset email sent — check your inbox', 'success');
+    } else {
+      SM.showToast(result.error, 'error');
+    }
+  });
+};
+
+/* ── SIGN UP HANDLER (Firebase async) ── */
+SM.handleSignUp = function(e) {
+  e.preventDefault();
+  var fname      = document.getElementById('su-fname').value.trim();
+  var linitial   = document.getElementById('su-linitial').value.trim();
+  var email      = document.getElementById('su-email').value.trim();
+  var pw         = document.getElementById('su-pw').value;
+  var community  = document.getElementById('su-community').value;
+  var roleEl     = document.querySelector('#su-roles .role-chip.selected');
+  var creatorType = roleEl ? roleEl.textContent.trim() : 'Photographer';
+  var errEl      = document.getElementById('su-error');
+  var btn        = e.target.querySelector('button[type=submit]');
+
+  if (!fname || !linitial) {
+    errEl.textContent = 'Please enter your first name and last initial.';
     errEl.style.display = 'block';
     return;
   }
-  errEl.style.display = 'none';
-  SM.showToast('Welcome back, ' + result.user.firstName + '!', 'success');
-  SM.showPage('home');
-};
+  if (pw.length < 6) {
+    errEl.textContent = 'Password must be at least 6 characters.';
+    errEl.style.display = 'block';
+    return;
+  }
 
-/* ── SIGN UP HANDLER ── */
-SM.handleSignUp = function(e) {
-  e.preventDefault();
-  const fname = document.getElementById('su-fname').value.trim();
-  const linitial = document.getElementById('su-linitial').value.trim();
-  const email = document.getElementById('su-email').value.trim();
-  const pw = document.getElementById('su-pw').value;
-  const community = document.getElementById('su-community').value;
-  const roleEl = document.querySelector('#su-roles .role-chip.selected');
-  const creatorType = roleEl ? roleEl.textContent : 'Photographer';
-  const errEl = document.getElementById('su-error');
-  if (!fname || !linitial) {
-    errEl.textContent = 'Please enter your name.'; errEl.style.display = 'block'; return;
-  }
-  const result = SM.register({ firstName: fname, lastInitial: linitial, email, password: pw, community, creatorType });
-  if (!result.ok) {
-    errEl.textContent = result.error; errEl.style.display = 'block'; return;
-  }
-  errEl.style.display = 'none';
-  SM.showToast('Welcome to StreetMeet, ' + fname + '!', 'success');
-  SM.showPage('home');
+  if (btn) { btn.textContent = 'CREATING ACCOUNT...'; btn.disabled = true; }
+
+  SM.register({ firstName: fname, lastInitial: linitial, email: email, password: pw, community: community, creatorType: creatorType })
+    .then(function(result) {
+      if (btn) { btn.textContent = 'CREATE ACCOUNT'; btn.disabled = false; }
+      if (!result.ok) {
+        errEl.textContent = result.error;
+        errEl.style.display = 'block';
+        return;
+      }
+      errEl.style.display = 'none';
+      SM.showToast('Welcome to StreetMeet, ' + fname + '!', 'success');
+      SM.showPage('edit-profile'); /* Take new users to complete their profile */
+    });
 };
 
 /* ── HOME COMMUNITY HEADER — rendered by app.js SM.renderHomeCommunityHeader() ── */
