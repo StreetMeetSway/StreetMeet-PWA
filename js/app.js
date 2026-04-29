@@ -342,144 +342,256 @@ SM.closeAttendeesModal = function(e) {
 
 /* ── PROFILE ── */
 SM.renderProfile = function() {
-  const user = SM.getCurrentUser();
+  var user = SM.getCurrentUser();
   if (!user) { SM.showPage('landing'); return; }
-  const el = document.getElementById('profile-content');
-  if (!el) return;
-  const initials = (user.firstName[0] + (user.lastInitial[0] || '')).toUpperCase();
-  el.innerHTML = `
-    <div class="profile-header">
-      <div class="flex items-center gap-md" style="gap:20px;max-width:var(--max-w);margin:0 auto">
-        <div class="profile-avatar-lg" style="background:var(--teal);display:flex;align-items:center;justify-content:center">
-          <span style="font-family:var(--font-head);font-size:2.5rem;color:var(--white)">${initials}</span>
-        </div>
-        <div>
-          <div class="profile-name">${user.firstName} ${user.lastInitial}</div>
-          <div class="profile-role">${user.creatorType}</div>
-          <div class="profile-community">${SM.communityName(user.community)}</div>
-        </div>
-        <button class="btn btn-sm btn-outline-white" style="margin-left:auto" onclick="SM.showPage('edit-profile')">EDIT PROFILE</button>
-      </div>
-    </div>
-    <div class="section">
-      <div class="two-col">
-        <div>
-          <h3 class="mb-md">ABOUT</h3>
-          <p class="p2 mb-lg">${user.bio || 'No bio yet.'}</p>
-          ${user.website ? `<div class="mb-sm"><span style="font-family:var(--font-head);font-size:1rem;letter-spacing:0.04em">PORTFOLIO</span><br><a href="https://${user.website}" target="_blank" class="event-meta-link">${user.website}</a></div>` : ''}
-          ${user.instagram ? `<div class="mb-sm"><span style="font-family:var(--font-head);font-size:1rem;letter-spacing:0.04em">INSTAGRAM</span><br><a href="https://instagram.com/${user.instagram}" target="_blank" class="event-meta-link">@${user.instagram}</a></div>` : ''}
-        </div>
-        <div>
-          <h3 class="mb-md">PHOTOS</h3>
-          <div class="profile-photos-grid">
-            ${[0,1,2,3].map(i => `
-              <div class="photo-slot${user.photos && user.photos[i] ? ' filled' : ''}">
-                ${user.photos && user.photos[i]
-                  ? `<img src="${user.photos[i]}" alt="Photo ${i+1}"/>`
-                  : `<svg class="slot-icon" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><span class="slot-label">ADD PHOTO</span>`
-                }
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  SM._renderProfileData(user, true); /* true = own profile, show Edit button */
 };
+
+/* View any user's public profile by Firestore userId */
+SM.viewProfile = function(userId) {
+  var current = SM.getCurrentUser();
+  /* If viewing own profile, use cached data */
+  if (current && current.id === userId) {
+    SM.renderProfile();
+    SM.showPage('profile');
+    return;
+  }
+  /* Fetch from Firestore */
+  var el = document.getElementById('profile-content');
+  if (el) el.innerHTML = '<div class="section"><p class="p2" style="color:var(--gray-600)">Loading profile...</p></div>';
+  SM.showPage('profile');
+  SM.fetchUserProfile(userId).then(function(result) {
+    if (!result.ok) {
+      if (el) el.innerHTML = '<div class="section"><p class="p2" style="color:var(--red)">Profile not found.</p></div>';
+      return;
+    }
+    SM._renderProfileData(result.user, false); /* false = someone else's profile */
+  });
+};
+
+SM._renderProfileData = function(user, isOwn) {
+  var el = document.getElementById('profile-content');
+  if (!el) return;
+
+  var initials = ((user.firstName||'')[0] || '').toUpperCase() +
+                 ((user.lastInitial||'')[0] || '').toUpperCase();
+
+  /* Avatar — use Firebase Storage URL if available, else initials */
+  var avatarHTML = user.avatarURL
+    ? '<img src="' + user.avatarURL + '" alt="' + user.firstName + '" style="width:100%;height:100%;object-fit:cover;"/>'
+    : '<span style="font-family:var(--font-head);font-size:2.5rem;color:var(--white)">' + initials + '</span>';
+
+  /* Portfolio photos — use photoURLs array from Firestore */
+  var photos = user.photoURLs || [];
+  var photosHTML = [0,1,2,3].map(function(i) {
+    if (photos[i]) {
+      return '<div class="photo-slot filled"><img src="' + photos[i] + '" alt="Photo ' + (i+1) + '"/></div>';
+    }
+    return '<div class="photo-slot">' +
+      '<svg class="slot-icon" viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>' +
+      '<span class="slot-label">' + (isOwn ? 'ADD PHOTO' : '') + '</span>' +
+    '</div>';
+  }).join('');
+
+  /* Video embed — Task 2.4 will expand this */
+  var videoHTML = '';
+  if (user.videoUrl) {
+    var embed = SM.parseVideoEmbed ? SM.parseVideoEmbed(user.videoUrl) : null;
+    if (embed) {
+      videoHTML = '<div class="mb-lg">' +
+        '<span class="section-label">Featured Work</span>' +
+        '<div style="position:relative;padding-top:56.25%;background:var(--black);margin-top:8px">' +
+          '<iframe src="' + embed.embedUrl + '" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allowfullscreen></iframe>' +
+        '</div>' +
+      '</div>';
+    }
+  }
+
+  el.innerHTML =
+    '<div class="profile-header">' +
+      '<div class="flex items-center gap-md" style="gap:20px;max-width:var(--max-w);margin:0 auto">' +
+        '<div class="profile-avatar-lg" style="background:var(--teal);display:flex;align-items:center;justify-content:center;overflow:hidden">' +
+          avatarHTML +
+        '</div>' +
+        '<div>' +
+          '<div class="profile-name">' + (user.firstName||'') + ' ' + (user.lastInitial||'') + '</div>' +
+          '<div class="profile-role">' + (user.creatorType||'') + '</div>' +
+          '<div class="profile-community">' + SM.communityName(user.community) + '</div>' +
+        '</div>' +
+        (isOwn ? '<button class="btn btn-sm btn-outline-white" style="margin-left:auto" onclick="SM.showPage(\'edit-profile\')">EDIT PROFILE</button>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="section">' +
+      '<div class="two-col">' +
+        '<div>' +
+          '<span class="section-label">About</span>' +
+          '<p class="p2 mb-lg">' + (user.bio || 'No bio yet.') + '</p>' +
+          videoHTML +
+          (user.website ? '<div class="mb-sm"><span style="font-family:var(--font-head);font-size:1rem;letter-spacing:0.04em">PORTFOLIO</span><br><a href="https://' + user.website + '" target="_blank" class="event-meta-link">' + user.website + '</a></div>' : '') +
+          (user.instagram ? '<div class="mb-sm"><span style="font-family:var(--font-head);font-size:1rem;letter-spacing:0.04em">INSTAGRAM</span><br><a href="https://instagram.com/' + user.instagram + '" target="_blank" class="event-meta-link">@' + user.instagram + '</a></div>' : '') +
+        '</div>' +
+        '<div>' +
+          '<span class="section-label">Photos</span>' +
+          '<div class="profile-photos-grid">' + photosHTML + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 
 /* ── EDIT PROFILE ── */
 SM.renderEditProfile = function() {
-  const user = SM.getCurrentUser();
+  var user = SM.getCurrentUser();
   if (!user) { SM.showPage('landing'); return; }
-  const el = document.getElementById('edit-profile-content');
+  var el = document.getElementById('edit-profile-content');
   if (!el) return;
-  el.innerHTML = `
-    <div class="section" style="max-width:640px;margin:0 auto">
-      <h2 class="mb-lg">EDIT PROFILE</h2>
-      <div style="display:flex;flex-direction:column;gap:18px">
-        <div class="form-grid">
-          <div class="field">
-            <label class="field-label">FIRST NAME</label>
-            <input class="field-input" type="text" id="ep-fname" value="${user.firstName}"/>
-          </div>
-          <div class="field">
-            <label class="field-label">LAST INITIAL</label>
-            <input class="field-input" type="text" id="ep-linitial" value="${user.lastInitial}" maxlength="2" style="width:80px"/>
-          </div>
-        </div>
-        <div class="field">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <label class="field-label">BIO</label>
-            <span class="char-count" id="ep-char-ct">${user.bio ? user.bio.length : 0} / 200</span>
-          </div>
-          <textarea class="field-textarea" id="ep-bio" maxlength="200" rows="3" oninput="document.getElementById('ep-char-ct').textContent=this.value.length+' / 200'">${user.bio || ''}</textarea>
-        </div>
-        <div class="field">
-          <label class="field-label">I AM A...</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px" id="ep-roles">
-            ${['Photographer','Model','Videographer','Content Creator'].map(r => `
-              <div class="role-chip${user.creatorType===r?' selected':''}" onclick="SM.pickRole(this,'ep-roles')">${r}</div>
-            `).join('')}
-          </div>
-        </div>
-        <div class="field">
-          <label class="field-label">HOME COMMUNITY</label>
-          <select class="field-select" id="ep-community">
-            <option value="smdc"${user.community==='smdc'?' selected':''}>SMDC — Washington, D.C.</option>
-            <option value="smwa"${user.community==='smwa'?' selected':''}>SMWA — Washington State</option>
-            <option value="smmd"${user.community==='smmd'?' selected':''}>SMMD — Maryland</option>
-          </select>
-        </div>
-        <div class="field">
-          <label class="field-label">PORTFOLIO WEBSITE</label>
-          <input class="field-input" type="text" id="ep-website" value="${user.website || ''}" placeholder="yourportfolio.com"/>
-        </div>
-        <div class="field">
-          <label class="field-label">INSTAGRAM</label>
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:var(--p2);color:var(--gray-600);white-space:nowrap">@</span>
-            <input class="field-input" type="text" id="ep-instagram" value="${user.instagram || ''}" placeholder="yourhandle"/>
-          </div>
-        </div>
-        <div class="field">
-          <label class="field-label">PORTFOLIO PHOTOS (UP TO 4)</label>
-          <div class="profile-photos-grid" style="margin-top:8px">
-            ${[0,1,2,3].map(i => `
-              <div class="photo-slot" title="Upload photo ${i+1}">
-                <svg class="slot-icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span class="slot-label">ADD</span>
-              </div>
-            `).join('')}
-          </div>
-          <p class="field-hint mt-sm">To add photos: upload them to your GitHub repo's /images folder, then enter the path like images/my-photo.jpg</p>
-        </div>
-        <div style="display:flex;gap:10px;padding-top:8px;border-top:1px solid var(--gray-200)">
-          <button class="btn btn-sm btn-outline" onclick="SM.showPage('profile')">CANCEL</button>
-          <button class="btn btn-sm" style="flex:1" onclick="SM.saveProfile()">SAVE PROFILE</button>
-        </div>
-      </div>
-    </div>
-  `;
+
+  var avatarStyle = user.avatarURL
+    ? 'background:url(' + user.avatarURL + ') center/cover no-repeat;'
+    : 'background:var(--teal);display:flex;align-items:center;justify-content:center;';
+  var avatarInner = user.avatarURL ? '' :
+    '<span style="font-family:var(--font-head);font-size:1.4rem;color:var(--white)">' +
+    ((user.firstName||'')[0]||'').toUpperCase() + ((user.lastInitial||'')[0]||'').toUpperCase() + '</span>';
+
+  var photos = user.photoURLs || [];
+
+  el.innerHTML =
+    '<div class="section" style="max-width:640px;margin:0 auto">' +
+      '<h2 class="mb-lg">EDIT PROFILE</h2>' +
+      '<div style="display:flex;flex-direction:column;gap:18px">' +
+
+        /* Avatar */
+        '<div style="display:flex;align-items:center;gap:14px">' +
+          '<div style="width:72px;height:72px;border-radius:50%;overflow:hidden;flex-shrink:0;' + avatarStyle + '">' +
+            avatarInner +
+          '</div>' +
+          '<div>' +
+            '<div style="font-family:var(--font-head);font-size:1rem;letter-spacing:0.04em;margin-bottom:4px">PROFILE PHOTO</div>' +
+            '<button class="btn btn-sm btn-outline" onclick="SM.showToast(\'Photo upload coming in Task 1.5!\',\'success\')">CHANGE PHOTO</button>' +
+          '</div>' +
+        '</div>' +
+
+        /* Name */
+        '<div class="form-grid">' +
+          '<div class="field"><label class="field-label">FIRST NAME</label>' +
+            '<input class="field-input" type="text" id="ep-fname" value="' + (user.firstName||'') + '"/></div>' +
+          '<div class="field"><label class="field-label">LAST INITIAL</label>' +
+            '<input class="field-input" type="text" id="ep-linitial" value="' + (user.lastInitial||'') + '" maxlength="2" style="width:80px"/></div>' +
+        '</div>' +
+
+        /* Bio */
+        '<div class="field">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center">' +
+            '<label class="field-label">BIO</label>' +
+            '<span class="char-count" id="ep-char-ct">' + (user.bio||'').length + ' / 200</span>' +
+          '</div>' +
+          '<textarea class="field-textarea" id="ep-bio" maxlength="200" rows="3" ' +
+            'oninput="document.getElementById(\'ep-char-ct\').textContent=this.value.length+\' / 200\'">' +
+            (user.bio||'') + '</textarea>' +
+        '</div>' +
+
+        /* Creator type */
+        '<div class="field"><label class="field-label">I AM A...</label>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px" id="ep-roles">' +
+            ['Photographer','Model','Videographer','Content Creator'].map(function(r) {
+              return '<div class="role-chip' + (user.creatorType===r?' selected':'') + '" onclick="SM.pickRole(this,\'ep-roles\')">' + r + '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+
+        /* Community */
+        '<div class="field"><label class="field-label">HOME COMMUNITY</label>' +
+          '<select class="field-select" id="ep-community">' +
+            '<option value="smdc"' + (user.community==='smdc'?' selected':'') + '>SMDC — Washington, D.C.</option>' +
+            '<option value="smwa"' + (user.community==='smwa'?' selected':'') + '>SMWA — Washington State</option>' +
+            '<option value="smmd"' + (user.community==='smmd'?' selected':'') + '>SMMD — Maryland</option>' +
+          '</select>' +
+        '</div>' +
+
+        /* Website */
+        '<div class="field"><label class="field-label">PORTFOLIO WEBSITE</label>' +
+          '<input class="field-input" type="text" id="ep-website" value="' + (user.website||'') + '" placeholder="yourportfolio.com"/>' +
+        '</div>' +
+
+        /* Instagram */
+        '<div class="field"><label class="field-label">INSTAGRAM</label>' +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<span style="font-size:var(--p2);color:var(--gray-600);white-space:nowrap">@</span>' +
+            '<input class="field-input" type="text" id="ep-instagram" value="' + (user.instagram||'') + '" placeholder="yourhandle"/>' +
+          '</div>' +
+        '</div>' +
+
+        /* Video URL — Task 2.4 */
+        '<div class="field"><label class="field-label">FEATURED VIDEO <span style="font-family:var(--font-body);font-size:var(--p3);font-weight:400;text-transform:none;letter-spacing:0;">(YouTube or Vimeo URL)</span></label>' +
+          '<input class="field-input" type="url" id="ep-video" value="' + (user.videoUrl||'') + '" placeholder="https://youtu.be/... or https://vimeo.com/..."/>' +
+          '<p class="field-hint mt-sm">Paste a YouTube or Vimeo link to showcase your work on your profile.</p>' +
+        '</div>' +
+
+        /* Portfolio photos */
+        '<div class="field"><label class="field-label">PORTFOLIO PHOTOS <span style="font-family:var(--font-body);font-size:var(--p3);font-weight:400;text-transform:none;letter-spacing:0;">(up to 4)</span></label>' +
+          '<div class="profile-photos-grid" style="margin-top:8px">' +
+            [0,1,2,3].map(function(i) {
+              if (photos[i]) {
+                return '<div class="photo-slot filled" title="Photo ' + (i+1) + '">' +
+                  '<img src="' + photos[i] + '" alt="Photo ' + (i+1) + '"/>' +
+                  '<div class="photo-num">' + (i+1) + '</div>' +
+                '</div>';
+              }
+              return '<div class="photo-slot" onclick="SM.showToast(\'Photo upload coming in Task 1.5!\',\'success\')">' +
+                '<svg class="slot-icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+                '<span class="slot-label">ADD</span>' +
+              '</div>';
+            }).join('') +
+          '</div>' +
+          '<p class="field-hint mt-sm">Full photo upload launches in the next update (Task 1.5 — Firebase Storage).</p>' +
+        '</div>' +
+
+        /* Actions */
+        '<div style="display:flex;gap:10px;padding-top:8px;border-top:1px solid var(--gray-200)">' +
+          '<button class="btn btn-sm btn-outline" onclick="SM.showPage(\'profile\')">CANCEL</button>' +
+          '<button class="btn btn-sm" style="flex:1" id="ep-save-btn" onclick="SM.saveProfile()">SAVE PROFILE</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 };
 
 SM.pickRole = function(el, containerId) {
-  document.querySelectorAll('#'+containerId+' .role-chip').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('#'+containerId+' .role-chip').forEach(function(c) { c.classList.remove('selected'); });
   el.classList.add('selected');
 };
 
 SM.saveProfile = function() {
-  const fname = document.getElementById('ep-fname')?.value.trim();
-  const linitial = document.getElementById('ep-linitial')?.value.trim();
-  const bio = document.getElementById('ep-bio')?.value.trim();
-  const community = document.getElementById('ep-community')?.value;
-  const website = document.getElementById('ep-website')?.value.trim();
-  const instagram = document.getElementById('ep-instagram')?.value.trim();
-  const roleEl = document.querySelector('#ep-roles .role-chip.selected');
-  const creatorType = roleEl ? roleEl.textContent : 'Photographer';
+  var fname      = (document.getElementById('ep-fname')?.value || '').trim();
+  var linitial   = (document.getElementById('ep-linitial')?.value || '').trim();
+  var bio        = (document.getElementById('ep-bio')?.value || '').trim();
+  var community  = document.getElementById('ep-community')?.value || 'smdc';
+  var website    = (document.getElementById('ep-website')?.value || '').trim();
+  var instagram  = (document.getElementById('ep-instagram')?.value || '').trim();
+  var videoUrl   = (document.getElementById('ep-video')?.value || '').trim();
+  var roleEl     = document.querySelector('#ep-roles .role-chip.selected');
+  var creatorType = roleEl ? roleEl.textContent.trim() : 'Photographer';
+  var saveBtn    = document.getElementById('ep-save-btn');
+
   if (!fname) { SM.showToast('First name is required', 'error'); return; }
-  SM.updateProfile({ firstName: fname, lastInitial: linitial, bio, community, website, instagram, creatorType });
-  SM.showToast('Profile saved!', 'success');
-  SM.showPage('profile');
+
+  if (saveBtn) { saveBtn.textContent = 'SAVING...'; saveBtn.disabled = true; }
+
+  SM.updateProfile({
+    firstName:   fname,
+    lastInitial: linitial,
+    bio:         bio,
+    community:   community,
+    website:     website,
+    instagram:   instagram,
+    videoUrl:    videoUrl,
+    creatorType: creatorType
+  }).then(function(result) {
+    if (saveBtn) { saveBtn.textContent = 'SAVE PROFILE'; saveBtn.disabled = false; }
+    if (!result.ok) {
+      SM.showToast(result.error || 'Could not save profile', 'error');
+      return;
+    }
+    SM.showToast('Profile saved!', 'success');
+    SM.showPage('profile');
+  });
 };
 
 /* ── COMMUNITY PAGE ── */
@@ -512,6 +624,18 @@ SM.communityData = {
       { name: 'Baltimore Frames', handle: 'baltimoreframes', bio: 'Baltimore documentary photographer and community builder.', link: '#' }
     ]
   }
+};
+
+/* ── VIDEO EMBED PARSER (Task 2.4 — used in renderProfile already) ── */
+SM.parseVideoEmbed = function(url) {
+  if (!url) return null;
+  /* YouTube — handles youtu.be/ID and youtube.com/watch?v=ID */
+  var ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([a-zA-Z0-9_-]{11})/);
+  if (ytMatch) return { platform: 'youtube', embedUrl: 'https://www.youtube.com/embed/' + ytMatch[1] + '?rel=0' };
+  /* Vimeo — handles vimeo.com/ID */
+  var vmMatch = url.match(/vimeo\.com\/(\d+)/);
+  if (vmMatch) return { platform: 'vimeo', embedUrl: 'https://player.vimeo.com/video/' + vmMatch[1] };
+  return null;
 };
 
 SM.communityName = function(id) {
